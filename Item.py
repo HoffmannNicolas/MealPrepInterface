@@ -15,10 +15,9 @@ class Ingredient(tk.Frame) :
         width=150, # Width in pixels
         height=150, # Height in pixels
         name="Item", # Name if the ingredient, displayed at the top. Example "Tomato".
-        massKg=0.100, # Mass in kg
+        massKg=None, # Mass in kg
         imagePath="image/QuestionMark.jpg",
-        precessor={None : 1.00}, # Dictionnary of [#Ref, Percentage] for all preceding ingredients. "None" means no origin (new input)
-        successor={None : 1.00}, # Dictionnary of [Ref, Percentage] for succeding ingredients. "None" means taken out of system (eaten, thrown of boxed).
+        precessors={}, # Dictionnary of {"name" : massKg} for all preceding ingredients. Empty for new input.
         colorRGB=[127, 127, 127],
         borderProportion=0.05,
         imageRatio=5, # How big the image is compared to the rest around it. Higher means the image takes more of the space.
@@ -32,9 +31,12 @@ class Ingredient(tk.Frame) :
         self.height = height
         self.name = name
         self.imagePath = imagePath
+        if (massKg is None) :
+            massKg = 0
+            for (precessorName, precessorMass) in precessors.items() :
+                massKg += precessorMass
         self.massKg = massKg
-        self.precessor = precessor
-        self.successor = successor
+        self.precessors = precessors
         self.colorRGB = colorRGB
         self._isHighlighted = _isHighlighted
         self.borderProportion = borderProportion
@@ -106,7 +108,7 @@ class Ingredient(tk.Frame) :
         self.successorRectangle = self.canvas.create_rectangle(self.successorLeftX, self.topCellY, self.rightCellX, self.bottomCellY, fill="white")
 
 
-    def leftClick(self, event=None, width=300, height=300) :
+    def leftClick(self, event=None, width=265, height=280) :
 
         """ On left click, open a top-level window, change the fields and validate to modify the object """
 
@@ -123,17 +125,18 @@ class Ingredient(tk.Frame) :
         nameLabel = tk.Label(editor, text="Name : ", font=('calibre', 10, 'normal'), justify="left")
         nameLabel.place(x=leftX, y=nameY, anchor="nw")
         nameVariable = tk.StringVar()
-        nameEntry = tk.Entry(editor, textvariable=nameVariable, font=('calibre', 10, 'normal'), width=20)
+        nameEntry = tk.Entry(editor, textvariable=nameVariable, font=('calibre', 10, 'normal'), width=24)
         nameEntry.insert(0, self.name)
-        nameEntry.place(x=leftX + 53, y=nameY, anchor="nw")
+        nameEntry.place(x=leftX + 54, y=nameY, anchor="nw")
 
             # mass
+            # /!\ Warning /!\ Two items can have the same name
         massY = nameY + verticalStep
         massLabel = tk.Label(editor, text="Mass (kg) : ", font=('calibre', 10, 'normal'), justify="left")
         massLabel.place(x=leftX, y=massY, anchor="nw")
         massVariable = tk.StringVar()
-        massEntry = tk.Entry(editor, textvariable=massVariable, font=('calibre', 10, 'normal'), width=20)
-        massEntry.insert(0, self.massKg)
+        massEntry = tk.Entry(editor, textvariable=massVariable, font=('calibre', 10, 'normal'), width=21)
+        massEntry.insert(0, round(self.massKg, 4))
         massEntry.place(x=leftX + 78, y=massY, anchor="nw")
 
             # Image Path
@@ -143,7 +146,7 @@ class Ingredient(tk.Frame) :
         imagePathVariable = tk.StringVar()
         imagePathEntry = tk.Entry(editor, textvariable=imagePathVariable, font=('calibre', 10, 'normal'), width=20)
         imagePathEntry.insert(0, self.imagePath)
-        imagePathEntry.place(x=leftX + 90, y=imagePathY, anchor="nw")
+        imagePathEntry.place(x=leftX + 86, y=imagePathY, anchor="nw")
 
             # Color RGB
         colorY = imagePathY + verticalStep
@@ -166,11 +169,60 @@ class Ingredient(tk.Frame) :
         colorBlueEntry.insert(0, self.colorRGB[2])
         colorBlueEntry.place(x=leftX + 170, y=colorY, anchor="nw")
 
-            # Sucessors
-        # TODO
-
             # Precessors
-        # TODO
+        precessorLabelY = colorY + verticalStep
+        precessorLabel = tk.Label(editor, text="Precessors : ", font=('calibre', 10, 'normal'), justify="left")
+        precessorLabel.place(x=50, y=precessorLabelY, anchor="nw")
+        precessorListY = precessorLabelY + int(verticalStep / 1.5)
+        listbox = tk.Listbox(editor, height=5, width=20)
+        listbox.place(x=leftX, y=precessorListY, anchor="nw")
+        for name, massKg in self.precessors.items():
+            mass_str = f"{round(massKg, 4)} kg" if (massKg >= 1) else f"{round(1000 * massKg, 4)} g"
+            listbox.insert("end", f"{name} : {mass_str}")
+
+        def listbox_delete(event=None) :
+            selected = listbox.curselection()
+            if (len(selected) <= 0) :
+                return
+            listbox.delete(selected[0])
+
+        precessorDeleteY = precessorListY + 10
+        precessorDeleteButton = tk.Button(editor, text="Delete", bd=1, command=listbox_delete)
+        precessorDeleteButton.place(x=182, y=precessorDeleteY, anchor="nw")
+
+        def listbox_add(event=None, width=230, height=100) :
+            addWindow = tk.Toplevel()
+            addWindow.geometry(f"{width}x{height}")
+            addWindow.title("Add Precessor")
+                # Name
+            nameLabel = tk.Label(addWindow, text="Name : ", font=('calibre', 10, 'normal'), justify="left")
+            nameLabel.place(x=6, y=6, anchor="nw")
+            nameVariable = tk.StringVar()
+            nameEntry = tk.Entry(addWindow, textvariable=nameVariable, font=('calibre', 10, 'normal'), width=20)
+            nameEntry.place(x=59, y=6, anchor="nw")
+                # mass
+            massLabel = tk.Label(addWindow, text="Mass (kg) : ", font=('calibre', 10, 'normal'), justify="left")
+            massLabel.place(x=6, y=36, anchor="nw")
+            massVariable = tk.StringVar()
+            massEntry = tk.Entry(addWindow, textvariable=massVariable, font=('calibre', 10, 'normal'), width=17)
+            massEntry.place(x=84, y=36, anchor="nw")
+                # Add button
+            def addToList(event=None) :
+                if (nameVariable.get() != "" and massVariable.get() != "") :
+                    massKg = float(massVariable.get())
+                    name = str(nameVariable.get())
+                    mass_str = f"{round(massKg, 4)} kg" if (massKg >= 1) else f"{round(1000 * massKg, 4)} g"
+                    listbox.insert("end", f"{name} : {mass_str}")
+                addWindow.destroy()
+            precessorDeleteButton = tk.Button(addWindow, text="Add", bd=1, command=addToList)
+            precessorDeleteButton.place(x=int(width / 2), y=height - 20, anchor="center")
+            addWindow.bind('<Return>', addToList)
+
+
+        precessorAddY = precessorDeleteY + 40
+        precessorAddButton = tk.Button(editor, text="Add", bd=1, command=listbox_add)
+        precessorAddButton.place(x=190, y=precessorAddY, anchor="nw")
+
 
             # Confirmation button
         def updateItem(event=None) :
@@ -178,7 +230,12 @@ class Ingredient(tk.Frame) :
             self.massKg = float(massEntry.get())
             self.imagePath = imagePathEntry.get()
             self.colorRGB = [int(colorRedVariable.get()), int(colorGreenVariable.get()), int(colorBlueVariable.get())]
-
+            newPrecessors = {}
+            for precessor_str in listbox.get(0, listbox.size() - 1) :
+                values = precessor_str.split(" ")
+                precessor_massKg = float(values[2]) if (values[-1] == "kg") else (float(values[2]) / 1000)
+                newPrecessors[values[0]] = precessor_massKg
+            self.precessors = newPrecessors
             self._updateEverything()
             editor.destroy()
 
@@ -194,6 +251,14 @@ if (__name__ == "__main__") :
     root.geometry('1300x600')
     ingredient = Ingredient(root)
     ingredient.pack(side="top", fill="both", expand=True)
-    tomato = Ingredient(root, width=150, height=150, name="Tomato", imagePath="image/tomato.jpg", colorRGB=[220, 63, 63], massKg=0.56)
+    tomato = Ingredient(
+        root,
+        width=150,
+        height=150,
+        name="Tomato",
+        imagePath="image/tomato.jpg",
+        colorRGB=[220, 63, 63],
+        precessors={"Flour" : 0.120, "Milk" : 0.200, "Egg" : 2.40}
+    )
     tomato.place(x=50, y=12)
     root.mainloop()
