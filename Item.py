@@ -26,6 +26,7 @@ class Ingredient(tk.Frame) :
         **kwargs
     ) :
 
+
         tk.Frame.__init__(self, parent, *args, **kwargs)
         self.width = width
         self.height = height
@@ -59,9 +60,16 @@ class Ingredient(tk.Frame) :
         self.imageRightX = int(self.width * ((self.imageRatio - 1) / self.imageRatio - self.borderProportion / 2))
         self.imageBottomY = int(self.height * ((self.imageRatio - 1) / self.imageRatio - self.borderProportion / 2))
 
+            # Used to move the Item around
+        self.place_X = None
+        self.place_Y = None
+
         self.canvas = tk.Canvas(self, width=self.width, height=self.height)
 
         self._updateEverything()
+        self.canvas.bind("<Button-3>", self.rightClickPress)
+        self.canvas.bind("<Button-1>", self.leftClickPress)
+        self.canvas.bind("<B1-Motion>", self.dragMotion)
 
 
     def _updateEverything(self) :
@@ -73,7 +81,7 @@ class Ingredient(tk.Frame) :
         self._updateImage()
         self._updateMass()
         self.canvas.pack()
-        self.canvas.bind("<Button-1>", self.leftClick)
+
 
     def _updateBackground(self) :
         self.backgroundColor = "#%02x%02x%02x" % tuple(self.colorRGB)
@@ -108,7 +116,7 @@ class Ingredient(tk.Frame) :
         self.successorRectangle = self.canvas.create_rectangle(self.successorLeftX, self.topCellY, self.rightCellX, self.bottomCellY, fill="white")
 
 
-    def leftClick(self, event=None, width=265, height=280) :
+    def rightClickPress(self, event=None, width=265, height=280) :
 
         """ On left click, open a top-level window, change the fields and validate to modify the object """
 
@@ -223,7 +231,6 @@ class Ingredient(tk.Frame) :
         precessorAddButton = tk.Button(editor, text="Add", bd=1, command=listbox_add)
         precessorAddButton.place(x=190, y=precessorAddY, anchor="nw")
 
-
             # Confirmation button
         def updateItem(event=None) :
             self.name = nameEntry.get()
@@ -243,6 +250,25 @@ class Ingredient(tk.Frame) :
         button = tk.Button(editor, text="Update", bd=1, command=updateItem)
         button.place(x=width / 2, y=height - 20, anchor="center")
 
+    def leftClickPress(self, event=None) :
+        self.grab_MouseX = event.x
+        self.grab_MouseY = event.y
+
+    def dragMotion(self, event=None) :
+        x = event.x
+        y = event.y
+        if (self.place_X is None) : self.place_X = 0
+        if (self.place_Y is None) : self.place_Y = 0
+        self.place_X += x - self.grab_MouseX
+        self.place_Y += y - self.grab_MouseY
+        print(f"[Drag] ({x}, {y})")
+        self.place(x=self.place_X, y=self.place_Y, anchor="nw")
+
+    def place(self, *args, **kwargs) :
+        tk.Frame.place(self, *args, **kwargs)
+        self.place_X = kwargs["x"]
+        self.place_Y = kwargs["y"]
+
 
 if (__name__ == "__main__") :
   # Tests
@@ -250,7 +276,7 @@ if (__name__ == "__main__") :
     root.title("Test Item")
     root.geometry('1300x600')
     ingredient = Ingredient(root)
-    ingredient.pack(side="top", fill="both", expand=True)
+    ingredient.pack()
     tomato = Ingredient(
         root,
         width=150,
@@ -260,5 +286,6 @@ if (__name__ == "__main__") :
         colorRGB=[220, 63, 63],
         precessors={"Flour" : 0.120, "Milk" : 0.200, "Egg" : 2.40}
     )
-    tomato.place(x=50, y=12)
+    tomato.place(x=50, y=50)
+
     root.mainloop()
