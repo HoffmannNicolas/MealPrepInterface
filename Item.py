@@ -2,6 +2,7 @@
 import tkinter as tk
 import cv2
 from PIL import Image, ImageTk
+from tkinter import messagebox
 
 
 class Ingredient(tk.Frame) :
@@ -15,7 +16,7 @@ class Ingredient(tk.Frame) :
         width=150, # Width in pixels
         height=150, # Height in pixels
         name="Item", # Name if the ingredient, displayed at the top. Example "Tomato".
-        massKg=None, # Mass in kg
+        deltaWaterKg=0,
         imagePath="image/QuestionMark.jpg",
         precessors={}, # Dictionnary of {"name" : massKg} for all preceding ingredients. Empty for new input.
         colorRGB=[127, 127, 127],
@@ -32,11 +33,7 @@ class Ingredient(tk.Frame) :
         self.height = height
         self.name = name
         self.imagePath = imagePath
-        if (massKg is None) :
-            massKg = 0
-            for (precessorName, precessorMass) in precessors.items() :
-                massKg += precessorMass
-        self.massKg = massKg
+        self.deltaWaterKg = deltaWaterKg
         self.precessors = precessors
         self.colorRGB = colorRGB
         self._isHighlighted = _isHighlighted
@@ -64,16 +61,34 @@ class Ingredient(tk.Frame) :
         self.place_X = None
         self.place_Y = None
 
-        self.canvas = tk.Canvas(self, width=self.width, height=self.height)
 
+        self.canvas = None
+        self.displayedImage = None
+        self.nameLabel = None
+        self.massLabel = None
         self._updateEverything()
-        self.canvas.bind("<Button-3>", self.rightClickPress)
-        self.canvas.bind("<Button-1>", self.leftClickPress)
-        self.canvas.bind("<B1-Motion>", self.dragMotion)
+
+
+
+    def getPrecessorsMassKg(self) :
+        pecessorsMassKg = 0
+        for (precessorName, precessorMassKg) in self.precessors.items() :
+            pecessorsMassKg += precessorMassKg
+        return pecessorsMassKg
+
+
+    def getMassKg(self) :
+        return self.getPrecessorsMassKg() + self.deltaWaterKg
 
 
     def _updateEverything(self) :
         """ Update every visual of an item """
+        if (self.canvas is not None) :
+            self.canvas.destroy()
+        self.canvas = tk.Canvas(self, width=self.width, height=self.height)
+        self.canvas.bind("<Button-3>", self.rightClickPress)
+        self.canvas.bind("<Button-1>", self.leftClickPress)
+        self.canvas.bind("<B1-Motion>", self.dragMotion)
         self._updateBackground()
         self._updatePrecessor()
         self._updateName()
@@ -87,24 +102,32 @@ class Ingredient(tk.Frame) :
         self.backgroundColor = "#%02x%02x%02x" % tuple(self.colorRGB)
         self.canvas.create_rectangle(1, 1, self.width, self.height, fill=self.backgroundColor, activefill=self.backgroundColor, outline="black")
 
+
     def _updateName(self) :
+        if (self.nameLabel is not None) :
+            self.nameLabel.destroy()
         self.nameLabel = tk.Label(self.canvas, text=f"{self.name}", font=('calibre', 10, 'normal'), justify="center", bg=self.backgroundColor)
         self.nameLabel.place(x=int(self.width / 2), y=int((self.topCellY + self.nameBottomY) / 2), anchor="center")
         self.nameWidth = int(self.width * self.imageRatio / (self.imageRatio + 2) / self.pixelPerCharacter)
+
 
     def _updateImage(self) :
         self.imageRectangle = self.canvas.create_rectangle(self.imageLeftX, self.imageTopY, self.imageRightX, self.imageBottomY)
         self.displayedImage = cv2.imread(self.imagePath)
         self.displayedImage = cv2.cvtColor(self.displayedImage, cv2.COLOR_BGR2RGB)
         self.displayedImage = cv2.resize(self.displayedImage, [int(self.imageRightX - self.imageLeftX) - 1, int(self.imageBottomY - self.imageTopY) - 1], interpolation=cv2.INTER_AREA)
-        self.displayedImage = ImageTk.PhotoImage(image=Image.fromarray(self.displayedImage))
-        self.imageView = self.canvas.create_image(int(self.width / 2), int(self.height / 2), anchor="center", image=self.displayedImage)
+        self.photoImage = ImageTk.PhotoImage(image=Image.fromarray(self.displayedImage))
+        self.imageView = self.canvas.create_image(int(self.width / 2), int(self.height / 2), anchor="center", image=self.photoImage)
+
 
     def _updateMass(self) :
-        if (self.massKg >= 1) :
-            massText = f"{round(self.massKg, 4)} kg"
+        if (self.massLabel is not None) :
+            self.massLabel.destroy()
+        massKg = self.getMassKg()
+        if (massKg >= 1) :
+            massText = f"{round(massKg, 4)} kg"
         else :
-            massText = f"{round(self.massKg * 1000, 4)} g"
+            massText = f"{round(massKg * 1000, 4)} g"
         self.massLabel = tk.Label(self.canvas, text=f"{massText}", font=('calibre', 10, 'normal'), justify="center", bg=self.backgroundColor)
         self.massLabel.place(x=int(self.width / 2), y=int((self.bottomCellY + self.massTopY) / 2), anchor="center")
 
@@ -112,11 +135,12 @@ class Ingredient(tk.Frame) :
     def _updatePrecessor(self) :
         self.precessorRectangle = self.canvas.create_rectangle(self.leftCellX, self.topCellY, self.precessorRightX, self.bottomCellY, fill="white")
 
+
     def _updateSuccessor(self) :
         self.successorRectangle = self.canvas.create_rectangle(self.successorLeftX, self.topCellY, self.rightCellX, self.bottomCellY, fill="white")
 
 
-    def rightClickPress(self, event=None, width=265, height=280) :
+    def rightClickPress(self, event=None, width=265, height=320) :
 
         """ On left click, open a top-level window, change the fields and validate to modify the object """
 
@@ -137,18 +161,8 @@ class Ingredient(tk.Frame) :
         nameEntry.insert(0, self.name)
         nameEntry.place(x=leftX + 54, y=nameY, anchor="nw")
 
-            # mass
-            # /!\ Warning /!\ Two items can have the same name
-        massY = nameY + verticalStep
-        massLabel = tk.Label(editor, text="Mass (kg) : ", font=('calibre', 10, 'normal'), justify="left")
-        massLabel.place(x=leftX, y=massY, anchor="nw")
-        massVariable = tk.StringVar()
-        massEntry = tk.Entry(editor, textvariable=massVariable, font=('calibre', 10, 'normal'), width=21)
-        massEntry.insert(0, round(self.massKg, 4))
-        massEntry.place(x=leftX + 78, y=massY, anchor="nw")
-
             # Image Path
-        imagePathY = massY + verticalStep
+        imagePathY = nameY + verticalStep
         imagePathLabel = tk.Label(editor, text="Image Path : ", font=('calibre', 10, 'normal'), justify="left")
         imagePathLabel.place(x=leftX, y=imagePathY, anchor="nw")
         imagePathVariable = tk.StringVar()
@@ -216,16 +230,57 @@ class Ingredient(tk.Frame) :
             massEntry.place(x=84, y=36, anchor="nw")
                 # Add button
             def addToList(event=None) :
-                if (nameVariable.get() != "" and massVariable.get() != "") :
+                if (nameVariable.get() == "") :
+                    messagebox.showwarning("Invalid Name", f"Name not found")
+                    return
+                if (massVariable.get() == "") :
+                    messagebox.showwarning("Invalid Mass", f"Mass not found")
+                    return
+
+                letters = "abcdefghijklmnopqrstuvwxyz"
+                LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+                accents = "éèàêçù"
+                special_characters = "-_"
+                validCharacters = letters + LETTERS + accents + special_characters
+                for char in nameVariable.get() :
+                    if (char not in validCharacters) :
+                        messagebox.showwarning("Invalid Name", f"Character '{char}' is NOT allowed\nAllowed Characters :\n{validCharacters}")
+                        return
+
+                try :
                     massKg = float(massVariable.get())
-                    name = str(nameVariable.get())
-                    mass_str = f"{round(massKg, 4)} kg" if (massKg >= 1) else f"{round(1000 * massKg, 4)} g"
-                    listbox.insert("end", f"{name} : {mass_str}")
+                except :
+                    messagebox.showwarning("Invalid Mass", f"Mass '{massVariable.get()}' does NOT constitute a float.")
+                    return
+                name = str(nameVariable.get())
+                mass_str = f"{round(massKg, 4)} kg" if (massKg >= 1) else f"{round(1000 * massKg, 4)} g"
+                listbox.insert("end", f"{name} : {mass_str}")
                 addWindow.destroy()
             precessorDeleteButton = tk.Button(addWindow, text="Add", bd=1, command=addToList)
             precessorDeleteButton.place(x=int(width / 2), y=height - 20, anchor="center")
             addWindow.bind('<Return>', addToList)
 
+            # Mass
+        massY = precessorLabelY + verticalStep * 4
+        massKg = self.getMassKg()
+        mass_str = f"{round(massKg, 4)} kg" if (massKg >= 1.0) else f"{round(1000 * massKg, 4)} g"
+        precessorsKg = self.getPrecessorsMassKg()
+        precessorsMass_str = f"{round(precessorsKg, 4)} kg" if (precessorsKg >= 1.0) else f"{round(1000 * precessorsKg, 4)} g"
+        evaporatedWaterMass_str = f"{round(self.deltaWaterKg, 4)}" if (abs(self.deltaWaterKg) >= 1.0) else f"{round(1000 * self.deltaWaterKg, 4)}"
+        # evaporatedWaterMass_str = f"{evaporatedWaterMass_str}" if (self.deltaWaterKg >= 0.0) else f"({evaporatedWaterMass_str})"
+        evaporatedWaterMass_str = f"{evaporatedWaterMass_str} kg" if (abs(self.deltaWaterKg) >= 1.0) else f"{evaporatedWaterMass_str} g"
+        massLabel1 = tk.Label(editor, text=f"[Mass] = [\u03A3 Input] + [Delta Water]", font=('calibre', 10, 'normal'), justify="left")
+        massLabel1.place(x=leftX, y=massY, anchor="nw")
+        massY2 = massY + 20
+        massLabel2 = tk.Label(editor, text=f"[{mass_str}] = [{precessorsMass_str}] + [{evaporatedWaterMass_str}]", font=('calibre', 10, 'normal'), justify="left")
+        massLabel2.place(x=leftX, y=massY2, anchor="nw")
+        massY3 = massY2 + 20
+        massLabel3 = tk.Label(editor, text=f"Re-Weighting (kg) : ", font=('calibre', 10, 'normal'), justify="left")
+        massLabel3.place(x=leftX, y=massY3, anchor="nw")
+        massVariable = tk.StringVar()
+        massEntry = tk.Entry(editor, textvariable=massVariable, font=('calibre', 10, 'normal'), width=14)
+        massEntry.insert(0, round(massKg, 4))
+        massEntry.place(x=leftX + 130, y=massY3, anchor="nw")
 
         precessorAddY = precessorDeleteY + 40
         precessorAddButton = tk.Button(editor, text="Add", bd=1, command=listbox_add)
@@ -234,9 +289,9 @@ class Ingredient(tk.Frame) :
             # Confirmation button
         def updateItem(event=None) :
             self.name = nameEntry.get()
-            self.massKg = float(massEntry.get())
             self.imagePath = imagePathEntry.get()
             self.colorRGB = [int(colorRedVariable.get()), int(colorGreenVariable.get()), int(colorBlueVariable.get())]
+            self.deltaWaterKg = float(massVariable.get()) - self.getPrecessorsMassKg()
             newPrecessors = {}
             for precessor_str in listbox.get(0, listbox.size() - 1) :
                 values = precessor_str.split(" ")
@@ -246,9 +301,17 @@ class Ingredient(tk.Frame) :
             self._updateEverything()
             editor.destroy()
 
+        massEntry.bind('<Return>', updateItem)
+        massEntry.bind("<KP_Enter>", updateItem)
+
         editor.bind('<Return>', updateItem)
+        editor.bind("<KP_Enter>", updateItem)
+
+        editor.bind('<Escape>', lambda e: editor.destroy())
+
         button = tk.Button(editor, text="Update", bd=1, command=updateItem)
         button.place(x=width / 2, y=height - 20, anchor="center")
+
 
     def leftClickPress(self, event=None) :
         self.grab_MouseX = event.x
@@ -261,7 +324,6 @@ class Ingredient(tk.Frame) :
         if (self.place_Y is None) : self.place_Y = 0
         self.place_X += x - self.grab_MouseX
         self.place_Y += y - self.grab_MouseY
-        print(f"[Drag] ({x}, {y})")
         self.place(x=self.place_X, y=self.place_Y, anchor="nw")
 
     def place(self, *args, **kwargs) :
